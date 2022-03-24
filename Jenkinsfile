@@ -1,5 +1,16 @@
 pipeline {
-  agent any
+  agent {
+    kubernetes {
+      yaml """
+      spec:
+        containers:
+        - name: jnlp
+          image: jenkins:inbound-agent
+          command: ["cat"]
+          tty: true 
+      """
+    }
+  }
 
   environment {
     CI = false
@@ -18,12 +29,8 @@ pipeline {
     stage('Build') {
       agent {
         kubernetes {
+          inheritFrom 'jnlp'
           yaml """
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            labels:
-              component: ci
           spec:
             containers:
             - name: node
@@ -44,7 +51,7 @@ pipeline {
       }
     }
 
-    stage('Push Image') {
+    /* stage('Push Image') {
       agent {
         kubernetes {
           yaml """
@@ -122,7 +129,7 @@ pipeline {
           helm ls -n carikatla
         """
       }
-    }
+    } */
 
   }
 }
