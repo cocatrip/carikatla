@@ -13,12 +13,6 @@ pipeline {
     REGISTRY_AUTH = credentials('registry-auth')
   }
 
-  agent {
-    kubernetes {
-      defaultContainer 'jnlp'
-    }
-  }
-
   stages {
     stage('Build') {
       agent {
