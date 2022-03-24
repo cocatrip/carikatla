@@ -29,7 +29,6 @@ pipeline {
     stage('Build') {
       agent {
         kubernetes {
-          inheritFrom 'jnlp'
           yaml """
           spec:
             containers:
