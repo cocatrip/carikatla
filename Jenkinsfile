@@ -16,92 +16,116 @@ pipeline {
   agent {
     kubernetes {
       defaultContainer 'jnlp'
-      yaml """
-      apiVersion: v1
-      kind: Pod
-      metadata:
-        labels:
-          component: ci
-      spec:
-        containers:
-        - name: node
-          image: node:lts-alpine
-          imagePullPolicy: IfNotPresent
-          command: ["cat"]
-          tty: true
-        - name: kaniko
-          image: gcr.io/kaniko-project/executor:debug
-          imagePullPolicy: IfNotPresent
-          command: ["cat"]
-          tty: true
-        - name: helm
-          image: dtzar/helm-kubectl
-          imagePullPolicy: IfNotPresent
-          command: ["cat"]
-          tty: true
-          volumeMounts:
-          - name: kubeconfig
-            mountPath: /root/.kube
-        volumes:
-        - name: kubeconfig
-          hostPath:
-            path: /home/admin/.kube
-            type: Directory
-      """
     }
   }
 
   stages {
     stage('Build') {
-      steps {
-        container('node') {
-          sh """
-            echo "*** building ***"
-            CI=${CI}
-            npm install
-            npm run build
+      agent {
+        kubernetes {
+          yaml """
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            labels:
+              component: ci
+          spec:
+            containers:
+            - name: node
+              image: node:lts-alpine
+              imagePullPolicy: IfNotPresent
+              command: ["cat"]
+              tty: true
           """
         }
+      }
+      steps {
+        sh """
+          echo "*** building ***"
+          CI=${CI}
+          npm install
+          npm run build
+        """
       }
     }
 
     stage('Push Image') {
-      steps {
-        container('kaniko') {
-          sh """
-            echo "*** pushing image ***"
-            mkdir -p /kaniko/.docker
-
-            echo '{
-              "auths": {
-                \"${REGISTRY_URL}\": {
-                  "auth":\"${REGISTRY_AUTH}\"
-                }
-              }
-            }' > /kaniko/.docker/config.json
-
-            /kaniko/executor \
-              --context `pwd` \
-              --dockerfile `pwd`/Dockerfile \
-              --destination ${IMAGE_NAME}:${IMAGE_TAG}
+      agent {
+        kubernetes {
+          yaml """
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            labels:
+              component: ci
+          spec:
+            containers:
+            - name: kaniko
+              image: gcr.io/kaniko-project/executor:debug
+              imagePullPolicy: IfNotPresent
+              command: ["cat"]
+              tty: true
           """
         }
+      }
+      steps {
+        sh """
+          echo "*** pushing image ***"
+          mkdir -p /kaniko/.docker
+
+          echo '{
+            "auths": {
+              \"${REGISTRY_URL}\": {
+                "auth":\"${REGISTRY_AUTH}\"
+              }
+            }
+          }' > /kaniko/.docker/config.json
+
+          /kaniko/executor \
+            --context `pwd` \
+            --dockerfile `pwd`/Dockerfile \
+            --destination ${IMAGE_NAME}:${IMAGE_TAG}
+        """
       }
     }
 
     stage('Deploy') {
-      steps {
-        container('helm') {
-          sh """
-            echo "*** deploying ***"
-            kubectl config set-context ${CLUSTER_CONTEXT} --cluster=kubernetes --user=${CLUSTER_USER}
-            kubectl config use-context ${CLUSTER_CONTEXT}
-            helm upgrade -i carikatla helm/carikatla -f helm/carikatla/values.yaml -n carikatla --set=image.tag=${IMAGE_TAG} --create-namespace
-            kubectl rollout status deployment/carikatla -n carikatla
-            kubectl get pods -n carikatla
-            helm ls -n carikatla
+      agent {
+        kubernetes {
+          yaml """
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            labels:
+              component: ci
+          spec:
+            containers:
+            - name: helm
+              image: dtzar/helm-kubectl
+              imagePullPolicy: IfNotPresent
+              command: ["cat"]
+              tty: true
+              volumeMounts:
+              - name: kubeconfig
+                mountPath: /root/.kube
+            volumes:
+            - name: kubeconfig
+              hostPath:
+                path: /home/admin/.kube
+                type: Directory
           """
         }
+      }
+      steps {
+        sh """
+          echo "*** deploying ***"
+          kubectl config set-context ${CLUSTER_CONTEXT} --cluster=kubernetes --user=${CLUSTER_USER}
+          kubectl config use-context ${CLUSTER_CONTEXT}
+          helm upgrade -i carikatla helm/carikatla -f helm/carikatla/values.yaml -n carikatla --set=image.tag=${IMAGE_TAG} --create-namespace
+          kubectl rollout status deployment/carikatla -n carikatla
+          kubectl get pods -n carikatla
+          helm ls -n carikatla
+        """
       }
     }
 
