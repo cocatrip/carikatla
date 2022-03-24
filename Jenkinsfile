@@ -5,7 +5,7 @@ pipeline {
       spec:
         containers:
         - name: jnlp
-          image: jenkins:inbound-agent
+          image: jenkins/inbound-agent
           command: ["cat"]
           tty: true 
       """
